@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cryptography Calculator - VOID OS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&family=Space+Mono&display=swap" rel="stylesheet">
+  <style>
+    /* VARIABEL WARNA MONOKROMATIK & VOID */
+    :root {
+      --void-black: #0a0a0a;
+      --bone-white: #e8e6e1;
+      --graphite-grey: #2a2a2a;
+      --micro-grey: #6a6a6a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--void-black);
+      color: var(--bone-white);
+      font-family: 'Space Mono', monospace;
+      min-height: 100vh;
+      overflow-x: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* TEKSTUR NOISE & GRID LATAR BELAKANG */
+    .noise-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      pointer-events: none;
+      z-index: 999;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    }
+
+    .grid-bg {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background-size: 50px 50px;
+      background-image: 
+        linear-gradient(to right, var(--graphite-grey) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--graphite-grey) 1px, transparent 1px);
+      opacity: 0.3;
+      z-index: -2;
+    }
+
+    /* TIPOGRAFI RAKSASA (MAKRO) */
+    .macro-type {
+      position: fixed;
+      top: -5vh;
+      left: -2vw;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 28vw;
+      font-weight: 700;
+      color: #121212; 
+      line-height: 0.75;
+      word-break: break-all;
+      z-index: -1;
+      user-select: none;
+    }
+
+    /* LAYOUT UTAMA: SWISS GRID */
+    .container {
+      width: 90vw;
+      max-width: 1200px;
+      height: 80vh;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      grid-template-rows: auto 1fr;
+      gap: 20px;
+      position: relative;
+    }
+
+    /* MICRO-COPY ESOTERIK */
+    .header-micro {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--micro-grey);
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--graphite-grey);
+      padding-bottom: 10px;
+    }
+
+    /* AREA KALKULATOR UTAMA */
+    .calc-panel {
+      grid-column: 7 / 13; 
+      align-self: center;
+      display: flex;
+      flex-direction: column;
+      gap: 25px;
+      background: rgba(10, 10, 10, 0.85);
+      padding: 30px;
+      border: 1px solid var(--graphite-grey);
+      backdrop-filter: blur(5px);
+    }
+
+    /* ELEMEN INPUT & OUTPUT TERMINAL */
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .flex-row {
+      display: flex;
+      gap: 15px;
+    }
+
+    .flex-row > * {
+      flex: 1;
+    }
+
+    label {
+      font-size: 0.75rem;
+      color: var(--micro-grey);
+      letter-spacing: 1px;
+    }
+
+    input, select, textarea {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--graphite-grey);
+      color: var(--bone-white);
+      font-family: 'Space Mono', monospace;
+      font-size: 1rem;
+      padding: 10px 0;
+      resize: none;
+      text-transform: uppercase;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-bottom: 1px solid var(--bone-white);
+    }
+
+    select option {
+      background-color: var(--void-black);
+      color: var(--bone-white);
+    }
+
+    textarea::-webkit-scrollbar { width: 5px; }
+    textarea::-webkit-scrollbar-thumb { background: var(--graphite-grey); }
+
+    .matrix-watermark {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      font-size: 0.6rem;
+      color: var(--graphite-grey);
+      line-height: 1.2;
+      pointer-events: none;
+    }
+
+    @media (max-width: 768px) {
+      .calc-panel { grid-column: 1 / -1; }
+      .macro-type { font-size: 40vw; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="noise-overlay"></div>
+  <div class="grid-bg"></div>
+  <div class="macro-type">CRYP<br>TOGR<br>APHY</div>
+
+  <main class="container">
+    <header class="header-micro">
+      <span>SYS.ARCHIVE // OP:KALEM</span>
+      <span>LAT:47.3769° N, LON:8.5417° E</span>
+    </header>
+
+    <div class="matrix-watermark">
+      [01] [02] [03] [04] [05]<br>
+      [06] [07] [08] [09] [10]<br>
+      [11] [12] [13] [14] [15]<br>
+      [16] [17] [18] [19] [20]<br>
+      [21] [22] [23] [24] [25]
+    </div>
+
+    <section class="calc-panel">
+      
+      <div class="flex-row">
+        <div class="input-group">
+          <label for="algo">[01] ALGORITHM</label>
+          <select id="algo">
+            <option value="caesar">CAESAR SHIFT</option>
+            <option value="vigenere">VIGENÈRE</option>
+            <option value="playfair">PLAYFAIR</option>
+            <option value="affine">AFFINE</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label for="mode">[02] OPERATION</label>
+          <select id="mode">
+            <option value="encrypt">ENCRYPT</option>
+            <option value="decrypt">DECRYPT</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="input-group" id="key-container">
+        </div>
+
+      <div class="input-group">
+        <label for="plaintext">[04] RAW_DATA.IN</label>
+        <textarea id="plaintext" rows="3" placeholder="TYPE MESSAGE HERE..."></textarea>
+      </div>
+
+      <div class="input-group">
+        <label for="ciphertext">[05] PROCESSED_DATA.OUT</label>
+        <textarea id="ciphertext" rows="3" readonly placeholder="AWAITING INPUT..."></textarea>
+      </div>
+
+    </section>
+  </main>
+
+  <script>
+    // --- HELPER KRIPTOGRAFI ---
+    const cleanText = (text) => text.toUpperCase().replace(/[^A-Z]/g, '');
+    
+    const modInverse = (a, m) => {
+      for (let x = 1; x < m; x++) if ((a * x) % m === 1) return x;
+      return 1;
+    };
+
+    // --- ALGORITMA ---
+    const ciphers = {
+      caesar: (text, shift, decrypt) => {
+        text = cleanText(text);
+        shift = parseInt(shift) || 0;
+        let res = '';
+        for (let i = 0; i < text.length; i++) {
+          let p = text.charCodeAt(i) - 65;
+          let c = decrypt ? (p - shift + 260) % 26 : (p + shift) % 26;
+          res += String.fromCharCode(c + 65);
+        }
+        return res;
+      },
+      
+      vigenere: (text, key, decrypt) => {
+        text = cleanText(text);
+        key = cleanText(key) || 'A';
+        let res = '';
+        for (let i = 0, j = 0; i < text.length; i++) {
+          const p = text.charCodeAt(i) - 65;
+          const k = key.charCodeAt(j % key.length) - 65;
+          const c = decrypt ? (p - k + 26) % 26 : (p + k) % 26;
+          res += String.fromCharCode(c + 65);
+          j++;
+        }
+        return res;
+      },
+
+      affine: (text, keys, decrypt) => {
+        text = cleanText(text);
+        let a = parseInt(keys.a) || 1;
+        let b = parseInt(keys.b) || 0;
+        let res = '';
+        const aInv = modInverse(a, 26);
+        
+        if (decrypt && aInv === 1 && a !== 1) return "[ERR] KEY 'A' MUST BE COPRIME WITH 26";
+
+        for (let i = 0; i < text.length; i++) {
+          const p = text.charCodeAt(i) - 65;
+          const c = decrypt ? (aInv * (p - b + 260)) % 26 : (a * p + b) % 26;
+          res += String.fromCharCode(c + 65);
+        }
+        return res;
+      },
+
+      playfair: (text, key, decrypt) => {
+        key = cleanText(key).replace(/J/g, 'I') || 'SECRET';
+        text = cleanText(text).replace(/J/g, 'I');
+        
+        const alphabet = "ABCDEFGHIKLMNOPQRSTUVWXYZ";
+        let matrixStr = Array.from(new Set(key + alphabet)).join('');
+        let matrix = [];
+        for(let i=0; i<5; i++) matrix.push(matrixStr.slice(i*5, i*5+5).split(''));
+
+        const findPos = (char) => {
+          for(let r=0; r<5; r++) for(let c=0; c<5; c++) if(matrix[r][c] === char) return [r, c];
+          return [0,0];
+        };
+
+        let digraphs = [];
+        for(let i=0; i<text.length; i+=2) {
+          let char1 = text[i];
+          let char2 = text[i+1];
+          if (!char2 || char1 === char2) { char2 = 'X'; i--; }
+          digraphs.push([char1, char2]);
+        }
+
+        let res = '';
+        digraphs.forEach(([c1, c2]) => {
+          let [r1, col1] = findPos(c1);
+          let [r2, col2] = findPos(c2);
+          let shift = decrypt ? 4 : 1; 
+
+          if (r1 === r2) {
+            res += matrix[r1][(col1 + shift) % 5] + matrix[r2][(col2 + shift) % 5];
+          } else if (col1 === col2) {
+            res += matrix[(r1 + shift) % 5][col1] + matrix[(r2 + shift) % 5][col2];
+          } else {
+            res += matrix[r1][col2] + matrix[r2][col1];
+          }
+        });
+        return res;
+      }
+    };
+
+    // --- MANAJEMEN DOM ---
+    const algoSelect = document.getElementById('algo');
+    const modeSelect = document.getElementById('mode');
+    const keyContainer = document.getElementById('key-container');
+    const plaintextInput = document.getElementById('plaintext');
+    const ciphertextOutput = document.getElementById('ciphertext');
+
+    // Merender input kunci sesuai algoritma
+    function renderKeyInputs() {
+      const algo = algoSelect.value;
+      let html = '';
+
+      if (algo === 'caesar') {
+        html = `
+          <label>[03] SHIFT_KEY (NUMBER)</label>
+          <input type="number" id="key-single" value="3" min="1" max="25">
+        `;
+      } else if (algo === 'vigenere' || algo === 'playfair') {
+        html = `
+          <label>[03] KEYWORD (STRING)</label>
+          <input type="text" id="key-single" value="VOID" placeholder="ENTER TEXT KEY...">
+        `;
+      } else if (algo === 'affine') {
+        html = `
+          <label>[03] KEY_A (COPRIME) & KEY_B (SHIFT)</label>
+          <div class="flex-row">
+            <input type="number" id="key-a" value="5" placeholder="Alpha (A)">
+            <input type="number" id="key-b" value="8" placeholder="Beta (B)">
+          </div>
+        `;
+      }
+
+      keyContainer.innerHTML = html;
+      
+      // Pasang event listener ke input baru agar kalkulasi real-time
+      keyContainer.querySelectorAll('input').forEach(input => {
+        input.addEventListener('input', processCryptography);
+      });
+      processCryptography();
+    }
+
+    // Fungsi Eksekutor
+    function processCryptography() {
+      const text = plaintextInput.value;
+      if (!text) {
+        ciphertextOutput.value = '';
+        return;
+      }
+
+      const algo = algoSelect.value;
+      const isDecrypt = modeSelect.value === 'decrypt';
+      let result = '';
+
+      if (algo === 'affine') {
+        const a = document.getElementById('key-a').value;
+        const b = document.getElementById('key-b').value;
+        result = ciphers.affine(text, {a, b}, isDecrypt);
+      } else {
+        const key = document.getElementById('key-single').value;
+        result = ciphers[algo](text, key, isDecrypt);
+      }
+
+      // Efek simulasi terminal (opsional, bisa dimatikan jika mengganggu)
+      if(result.includes("[ERR]")) {
+        ciphertextOutput.value = result;
+      } else {
+        ciphertextOutput.value = result;
+      }
+    }
+
+    // --- EVENT LISTENERS INITIAL ---
+    algoSelect.addEventListener('change', renderKeyInputs);
+    modeSelect.addEventListener('change', processCryptography);
+    plaintextInput.addEventListener('input', processCryptography);
+
+    // Render pertama kali saat halaman dimuat
+    renderKeyInputs();
+  </script>
+</body>
+</html>
