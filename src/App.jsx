@@ -140,6 +140,78 @@ const hill2x2 = (text, kArray, decrypt = false) => {
   return { result: result.match(/.{1,4}/g)?.join(' ') || '', error: null };
 };
 
+// Algoritma Enigma M3 (Rotor I, II, III dan Reflektor B)
+const enigma = (text, key) => {
+  const cleanKey = key.toUpperCase().replace(/[^A-Z]/g, '');
+  if (cleanKey.length !== 3) return { result: '', error: 'ERR: ENIGMA REQUIRES 3-LETTER ROTOR KEY (E.G. "AAA")' };
+
+  // Konfigurasi Standar Enigma 
+  const rotors = [
+    "EKMFLGDQVZNTOWYHXUSPAIBRCJ", // Rotor I
+    "AJDKSIRUXBLHWTMCQGZNPYFVOE", // Rotor II
+    "BDFHJLCPRTXVZNYEIWGAKMUSQO"  // Rotor III
+  ];
+  const notches = [16, 4, 21]; // Notch Q, E, V
+  const reflector = "YRUHQSLDPXNGOKMIEBFZCWVJAT"; // Reflektor B
+
+  let p1 = cleanKey.charCodeAt(0) - 65;
+  let p2 = cleanKey.charCodeAt(1) - 65;
+  let p3 = cleanKey.charCodeAt(2) - 65;
+
+  const shift = (c, offset) => (c + offset) % 26;
+  const unshift = (c, offset) => (c - offset + 26) % 26;
+
+  const passRotor = (c, wiring, offset, inverse) => {
+    if (!inverse) {
+      const charAtPin = String.fromCharCode(shift(c, offset) + 65);
+      const wiredChar = wiring[charAtPin.charCodeAt(0) - 65];
+      return unshift(wiredChar.charCodeAt(0) - 65, offset);
+    } else {
+      const targetChar = String.fromCharCode(shift(c, offset) + 65);
+      const pinIndex = wiring.indexOf(targetChar);
+      return unshift(pinIndex, offset);
+    }
+  };
+
+  let result = '';
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i].toUpperCase();
+    if (char >= 'A' && char <= 'Z') {
+      // Mekanisme Odometer / Stepping Enigma
+      let step2 = p3 === notches[2];
+      let step1 = p2 === notches[1];
+      
+      if (step1) {
+        p2 = (p2 + 1) % 26;
+        p1 = (p1 + 1) % 26; // Double stepping anomaly
+      } else if (step2) {
+        p2 = (p2 + 1) % 26;
+      }
+      p3 = (p3 + 1) % 26;
+
+      let c = char.charCodeAt(0) - 65;
+
+      // Sinyal Maju (Forward pass) melewati Rotor 3, 2, 1
+      c = passRotor(c, rotors[2], p3, false);
+      c = passRotor(c, rotors[1], p2, false);
+      c = passRotor(c, rotors[0], p1, false);
+
+      // Sinyal Memantul di Reflektor
+      c = reflector.charCodeAt(c) - 65;
+
+      // Sinyal Mundur (Backward pass) melewati Rotor 1, 2, 3
+      c = passRotor(c, rotors[0], p1, true);
+      c = passRotor(c, rotors[1], p2, true);
+      c = passRotor(c, rotors[2], p3, true);
+
+      result += String.fromCharCode(c + 65);
+    } else {
+      result += char;
+    }
+  }
+  return { result, error: null };
+};
+
 
 // ==========================================
 // KOMPONEN UI REACT
@@ -152,12 +224,13 @@ export default function App() {
   const [output, setOutput] = useState('');
   const [sysStatus, setSysStatus] = useState({ msg: 'IDLE', isError: false });
 
-  // State kunci diubah menjadi string murni (text input)
+  // State kunci
   const [vigenereKey, setVigenereKey] = useState('PUNK');
-  const [affineA, setAffineA] = useState('F'); // Contoh: 'F' atau '5'
-  const [affineB, setAffineB] = useState('I'); // Contoh: 'I' atau '8'
+  const [affineA, setAffineA] = useState('F'); 
+  const [affineB, setAffineB] = useState('I'); 
   const [playfairKey, setPlayfairKey] = useState('REBEL');
-  const [hillKey, setHillKey] = useState('DDCF'); // 4-letter matrix word
+  const [hillKey, setHillKey] = useState('DDCF'); 
+  const [enigmaKey, setEnigmaKey] = useState('AAA'); // Initial rotor settings
 
   useEffect(() => {
     if (!input) {
@@ -175,7 +248,6 @@ export default function App() {
           process = vigenere(input, vigenereKey, isDecrypt); 
           break;
         case 'affine': 
-          // Parsing string ke angka saat komputasi berjalan
           const numA = parseKeyVal(affineA, 1);
           const numB = parseKeyVal(affineB, 0);
           process = affine(input, numA, numB, isDecrypt); 
@@ -184,9 +256,12 @@ export default function App() {
           process = playfair(input, playfairKey, isDecrypt); 
           break;
         case 'hill': 
-          // Parsing string tunggal menjadi array 4 angka
           const matrixArr = parseHillMatrix(hillKey);
           process = hill2x2(input, matrixArr, isDecrypt); 
+          break;
+        case 'enigma':
+          // Enigma tidak peduli isDecrypt karena cipher ini reciprocal (berkebalikan secara identik)
+          process = enigma(input, enigmaKey);
           break;
         default: break;
       }
@@ -202,7 +277,7 @@ export default function App() {
       setOutput('');
       setSysStatus({ msg: 'CRITICAL_SYS_FAILURE', isError: true });
     }
-  }, [input, cipher, mode, vigenereKey, affineA, affineB, playfairKey, hillKey]);
+  }, [input, cipher, mode, vigenereKey, affineA, affineB, playfairKey, hillKey, enigmaKey]);
 
   const handleCopy = () => {
     if (output) {
@@ -259,6 +334,7 @@ export default function App() {
                 <option className="bg-[#0a0a0a]" value="affine">AFFINE CIPHER</option>
                 <option className="bg-[#0a0a0a]" value="playfair">PLAYFAIR CIPHER</option>
                 <option className="bg-[#0a0a0a]" value="hill">HILL CIPHER 2X2</option>
+                <option className="bg-[#0a0a0a]" value="enigma">ENIGMA MACHINE</option>
               </select>
             </div>
 
@@ -270,7 +346,6 @@ export default function App() {
                   <input type="text" placeholder="ENTER ALPHABETIC KEY" value={vigenereKey} onChange={e => setVigenereKey(e.target.value)} className={inputStyles} />
                 )}
 
-                {/* AFFINE: Sekarang pakai type="text" */}
                 {cipher === 'affine' && (
                   <div className="grid grid-cols-2 gap-6">
                     <div>
@@ -288,7 +363,6 @@ export default function App() {
                   <input type="text" placeholder="ENTER KEYWORD" value={playfairKey} onChange={e => setPlayfairKey(e.target.value)} className={inputStyles} />
                 )}
 
-                {/* HILL: Dilebur jadi 1 text input */}
                 {cipher === 'hill' && (
                   <div>
                     <span className="text-[0.6rem] text-[#6a6a6a] block mb-2">4-LETTER WORD OR 4 NUMBERS</span>
@@ -298,6 +372,20 @@ export default function App() {
                       onChange={e => setHillKey(e.target.value)} 
                       className={inputStyles} 
                       placeholder="e.g. PUNK or 15 20 13 10" 
+                    />
+                  </div>
+                )}
+
+                {cipher === 'enigma' && (
+                  <div>
+                    <span className="text-[0.6rem] text-[#6a6a6a] block mb-2">3-LETTER ROTOR SETTING</span>
+                    <input 
+                      type="text" 
+                      value={enigmaKey} 
+                      onChange={e => setEnigmaKey(e.target.value)} 
+                      className={inputStyles} 
+                      placeholder="e.g. AAA" 
+                      maxLength={3}
                     />
                   </div>
                 )}

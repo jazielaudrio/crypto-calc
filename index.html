@@ -163,6 +163,10 @@
       pointer-events: none;
     }
 
+    .err-text {
+      color: #ef4444; /* Red color for errors */
+    }
+
     @media (max-width: 768px) {
       .calc-panel { grid-column: 1 / -1; }
       .macro-type { font-size: 40vw; }
@@ -195,10 +199,11 @@
         <div class="input-group">
           <label for="algo">[01] ALGORITHM</label>
           <select id="algo">
-            <option value="caesar">CAESAR SHIFT</option>
             <option value="vigenere">VIGENÈRE</option>
             <option value="playfair">PLAYFAIR</option>
             <option value="affine">AFFINE</option>
+            <option value="hill">HILL (2x2)</option>
+            <option value="enigma">ENIGMA MACHINE</option>
           </select>
         </div>
         <div class="input-group">
@@ -211,7 +216,7 @@
       </div>
 
       <div class="input-group" id="key-container">
-        </div>
+      </div>
 
       <div class="input-group">
         <label for="plaintext">[04] RAW_DATA.IN</label>
@@ -228,7 +233,7 @@
 
   <script>
     // --- HELPER KRIPTOGRAFI ---
-    const cleanText = (text) => text.toUpperCase().replace(/[^A-Z]/g, '');
+    const cleanText = (text) => text ? text.toUpperCase().replace(/[^A-Z]/g, '') : '';
     
     const modInverse = (a, m) => {
       for (let x = 1; x < m; x++) if ((a * x) % m === 1) return x;
@@ -237,18 +242,6 @@
 
     // --- ALGORITMA ---
     const ciphers = {
-      caesar: (text, shift, decrypt) => {
-        text = cleanText(text);
-        shift = parseInt(shift) || 0;
-        let res = '';
-        for (let i = 0; i < text.length; i++) {
-          let p = text.charCodeAt(i) - 65;
-          let c = decrypt ? (p - shift + 260) % 26 : (p + shift) % 26;
-          res += String.fromCharCode(c + 65);
-        }
-        return res;
-      },
-      
       vigenere: (text, key, decrypt) => {
         text = cleanText(text);
         key = cleanText(key) || 'A';
@@ -317,6 +310,104 @@
           }
         });
         return res;
+      },
+
+      hill: (text, keyStr, decrypt) => {
+        text = cleanText(text);
+        if (!text) return '';
+        if (text.length % 2 !== 0) text += 'X';
+        
+        let kArray;
+        if (/[\d]/.test(keyStr)) {
+          const nums = keyStr.match(/\d+/g);
+          kArray = (nums && nums.length >= 4) ? nums.slice(0, 4).map(Number) : [0,0,0,0];
+        } else {
+          const clean = cleanText(keyStr);
+          const padded = (clean + 'AAAA').slice(0, 4);
+          kArray = padded.split('').map(c => c.charCodeAt(0) - 65);
+        }
+
+        let det = (kArray[0]*kArray[3] - kArray[1]*kArray[2]) % 26;
+        if (det < 0) det += 26;
+        const detInv = modInverse(det, 26);
+        
+        if (decrypt && (detInv === 1 && det !== 1 || det === 0)) return "[ERR] MATRIX DETERMINANT HAS NO INVERSE";
+        
+        let matrix = decrypt 
+          ? [(kArray[3]*detInv)%26, (-kArray[1]*detInv)%26, (-kArray[2]*detInv)%26, (kArray[0]*detInv)%26].map(x => (x + 260) % 26) 
+          : kArray;
+          
+        let res = '';
+        for(let i=0; i<text.length; i+=2) {
+          let p1 = text.charCodeAt(i) - 65;
+          let p2 = text.charCodeAt(i+1) - 65;
+          let c1 = (matrix[0]*p1 + matrix[1]*p2) % 26;
+          let c2 = (matrix[2]*p1 + matrix[3]*p2) % 26;
+          res += String.fromCharCode(c1 + 65) + String.fromCharCode(c2 + 65);
+        }
+        return res;
+      },
+
+      enigma: (text, key) => {
+        const cleanKey = cleanText(key);
+        if (cleanKey.length !== 3) return "[ERR] ENIGMA REQUIRES 3-LETTER ROTOR KEY (E.G. 'AAA')";
+
+        const rotors = [
+          "EKMFLGDQVZNTOWYHXUSPAIBRCJ", // I
+          "AJDKSIRUXBLHWTMCQGZNPYFVOE", // II
+          "BDFHJLCPRTXVZNYEIWGAKMUSQO"  // III
+        ];
+        const notches = [16, 4, 21];
+        const reflector = "YRUHQSLDPXNGOKMIEBFZCWVJAT"; // Reflektor B
+
+        let p1 = cleanKey.charCodeAt(0) - 65;
+        let p2 = cleanKey.charCodeAt(1) - 65;
+        let p3 = cleanKey.charCodeAt(2) - 65;
+
+        const shift = (c, offset) => (c + offset) % 26;
+        const unshift = (c, offset) => (c - offset + 26) % 26;
+
+        const passRotor = (c, wiring, offset, inverse) => {
+          if (!inverse) {
+            const charAtPin = String.fromCharCode(shift(c, offset) + 65);
+            const wiredChar = wiring[charAtPin.charCodeAt(0) - 65];
+            return unshift(wiredChar.charCodeAt(0) - 65, offset);
+          } else {
+            const targetChar = String.fromCharCode(shift(c, offset) + 65);
+            const pinIndex = wiring.indexOf(targetChar);
+            return unshift(pinIndex, offset);
+          }
+        };
+
+        let res = '';
+        text = cleanText(text);
+        for (let i = 0; i < text.length; i++) {
+          let step2 = p3 === notches[2];
+          let step1 = p2 === notches[1];
+          
+          if (step1) {
+            p2 = (p2 + 1) % 26;
+            p1 = (p1 + 1) % 26;
+          } else if (step2) {
+            p2 = (p2 + 1) % 26;
+          }
+          p3 = (p3 + 1) % 26;
+
+          let c = text.charCodeAt(i) - 65;
+
+          c = passRotor(c, rotors[2], p3, false);
+          c = passRotor(c, rotors[1], p2, false);
+          c = passRotor(c, rotors[0], p1, false);
+
+          c = reflector.charCodeAt(c) - 65;
+
+          c = passRotor(c, rotors[0], p1, true);
+          c = passRotor(c, rotors[1], p2, true);
+          c = passRotor(c, rotors[2], p3, true);
+
+          res += String.fromCharCode(c + 65);
+        }
+        return res;
       }
     };
 
@@ -332,12 +423,7 @@
       const algo = algoSelect.value;
       let html = '';
 
-      if (algo === 'caesar') {
-        html = `
-          <label>[03] SHIFT_KEY (NUMBER)</label>
-          <input type="number" id="key-single" value="3" min="1" max="25">
-        `;
-      } else if (algo === 'vigenere' || algo === 'playfair') {
+      if (algo === 'vigenere' || algo === 'playfair') {
         html = `
           <label>[03] KEYWORD (STRING)</label>
           <input type="text" id="key-single" value="VOID" placeholder="ENTER TEXT KEY...">
@@ -349,6 +435,16 @@
             <input type="number" id="key-a" value="5" placeholder="Alpha (A)">
             <input type="number" id="key-b" value="8" placeholder="Beta (B)">
           </div>
+        `;
+      } else if (algo === 'hill') {
+        html = `
+          <label>[03] KEY_MATRIX (4 LETTERS OR NUMS)</label>
+          <input type="text" id="key-single" value="DDCF" placeholder="e.g. DDCF or 15 20 13 10">
+        `;
+      } else if (algo === 'enigma') {
+        html = `
+          <label>[03] ROTOR SETTINGS (3 LETTERS)</label>
+          <input type="text" id="key-single" value="AAA" maxlength="3" placeholder="e.g. AAA">
         `;
       }
 
@@ -366,6 +462,7 @@
       const text = plaintextInput.value;
       if (!text) {
         ciphertextOutput.value = '';
+        ciphertextOutput.classList.remove('err-text');
         return;
       }
 
@@ -382,12 +479,13 @@
         result = ciphers[algo](text, key, isDecrypt);
       }
 
-      // Efek simulasi terminal (opsional, bisa dimatikan jika mengganggu)
-      if(result.includes("[ERR]")) {
-        ciphertextOutput.value = result;
+      if (result.startsWith("[ERR]")) {
+        ciphertextOutput.classList.add('err-text');
       } else {
-        ciphertextOutput.value = result;
+        ciphertextOutput.classList.remove('err-text');
       }
+      
+      ciphertextOutput.value = result;
     }
 
     // --- EVENT LISTENERS INITIAL ---
